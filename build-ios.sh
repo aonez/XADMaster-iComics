@@ -84,18 +84,25 @@ make_framework() {
     xcodebuild -project XADMaster.xcodeproj -scheme XADMaster-iOS -sdk iphoneos -destination "generic/platform=iOS" \
                 -configuration Release BUILD_LIBRARY_FOR_DISTRIBUTION=YES -derivedDataPath build build
 
-        # Add the module map for Swift compatibility
+    # Add the module map for Swift compatibility
     add_module_map "${BUILD_PATH}/${DEVICE_PATH}/${FRAMEWORK_NAME}.framework"
 
-    #Convert the library into an xcframework
+    # Convert the library into an xcframework
     xcodebuild -create-xcframework \
             -framework ${BUILD_PATH}/${DEVICE_PATH}/${FRAMEWORK_NAME}.framework \
             -framework ${BUILD_PATH}/${CATALYST_PATH}/${FRAMEWORK_NAME}.framework \
             -framework ${BUILD_PATH}/${SIMULATOR_PATH}/${FRAMEWORK_NAME}.framework \
             -output build/${FRAMEWORK_NAME}.xcframework
 
-    # Open the folder for us to see if
-    open build
+    # Bundle the LICENSE and framework into a release
+    cd build
+    mkdir ${FRAMEWORK_NAME}
+    cp -r ${FRAMEWORK_NAME}.xcframework ${FRAMEWORK_NAME}/${FRAMEWORK_NAME}.xcframework
+    cp ../LICENSE ${FRAMEWORK_NAME}/LICENSE
+    ditto -ck --rsrc --sequesterRsrc ${FRAMEWORK_NAME} ${FRAMEWORK_NAME}.zip
+
+    # Open the folder for us to see the build results
+    open `pwd`
 }
 
 # Start the build process
