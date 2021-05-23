@@ -852,7 +852,14 @@ dataFork:(BOOL)datafork resourceFork:(BOOL)resfork
 
 	if(![name length]) return YES; // Silently ignore unnamed files (or more likely, directories).
 
-	NSString *destfile=[destination stringByAppendingPathComponent:name];
+    // If the destination didn't include a file name at the end,
+    // default back to using the file name from the archive.
+    NSString *destfile=destination;
+    if(destination.pathExtension.length == 0)
+    {
+        destination = [destination stringByAppendingPathComponent:name];
+    }
+
 	while(![self _extractEntry:n as:destfile deferDirectories:defer dataFork:datafork resourceFork:resfork])
 	{
 		if(lasterror==XADBreakError) return NO;
