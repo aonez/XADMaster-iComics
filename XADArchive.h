@@ -72,21 +72,21 @@ NS_ASSUME_NONNULL_BEGIN
 
 -(id)init;
 -(nullable id)initWithFile:(NSString *)file;
--(nullable id)initWithFile:(NSString *)file error:(XADError *)error;
--(nullable id)initWithFile:(NSString *)file delegate:(id)del error:(XADError *)error;
+-(nullable id)initWithFile:(NSString *)file error:(nullable XADError *)error;
+-(nullable id)initWithFile:(NSString *)file delegate:(nullable id)del error:(nullable XADError *)error;
 -(nullable id)initWithData:(NSData *)data;
--(nullable id)initWithData:(NSData *)data error:(XADError *)error;
--(nullable id)initWithData:(NSData *)data delegate:(id)del error:(XADError *)error;
+-(nullable id)initWithData:(NSData *)data error:(nullable XADError *)error;
+-(nullable id)initWithData:(NSData *)data delegate:(nullable id)del error:(nullable XADError *)error;
 -(nullable id)initWithArchive:(XADArchive *)archive entry:(int)n;
--(nullable id)initWithArchive:(XADArchive *)archive entry:(int)n error:(XADError *)error;
--(nullable id)initWithArchive:(XADArchive *)otherarchive entry:(int)n delegate:(id)del error:(XADError *)error;
+-(nullable id)initWithArchive:(XADArchive *)archive entry:(int)n error:(nullable XADError *)error;
+-(nullable id)initWithArchive:(XADArchive *)otherarchive entry:(int)n delegate:(nullable id)del error:(nullable XADError *)error;
 -(nullable id)initWithArchive:(XADArchive *)otherarchive entry:(int)n
-     immediateExtractionTo:(NSString *)destination error:(XADError *)error;
+     immediateExtractionTo:(NSString *)destination error:(nullable XADError *)error;
 -(nullable id)initWithArchive:(XADArchive *)otherarchive entry:(int)n
-     immediateExtractionTo:(NSString *)destination subArchives:(BOOL)sub error:(XADError *)error;
+     immediateExtractionTo:(NSString *)destination subArchives:(BOOL)sub error:(nullable XADError *)error;
 -(void)dealloc;
 
--(BOOL)_parseWithErrorPointer:(XADError *)error;
+-(BOOL)_parseWithErrorPointer:(nullable XADError *)error;
 
 -(nullable NSString *)filename;
 -(nullable NSArray *)allFilenames;
@@ -99,11 +99,11 @@ NS_ASSUME_NONNULL_BEGIN
 -(nullable NSString *)commonTopDirectory;
 -(nullable NSString *)comment;
 
--(void)setDelegate:(id _Nullable )delegate;
+-(void)setDelegate:(nullable id)delegate;
 -(nullable id)delegate;
 
 -(nullable NSString *)password;
--(void)setPassword:(NSString * _Nullable)newpassword;
+-(void)setPassword:(nullable NSString *)newpassword;
 
 -(NSStringEncoding)nameEncoding;
 -(void)setNameEncoding:(NSStringEncoding)encoding;
@@ -135,9 +135,9 @@ NS_ASSUME_NONNULL_BEGIN
 -(nullable NSDictionary *)attributesOfEntry:(int)n;
 -(nullable NSDictionary *)attributesOfEntry:(int)n withResourceFork:(BOOL)resfork;
 -(nullable CSHandle *)handleForEntry:(int)n;
--(nullable CSHandle *)handleForEntry:(int)n error:(XADError *)error;
+-(nullable CSHandle *)handleForEntry:(int)n error:(nullable XADError *)error;
 -(nullable CSHandle *)resourceHandleForEntry:(int)n;
--(nullable CSHandle *)resourceHandleForEntry:(int)n error:(XADError *)error;
+-(nullable CSHandle *)resourceHandleForEntry:(int)n error:(nullable XADError *)error;
 -(nullable NSData *)contentsOfEntry:(int)n;
 //-(NSData *)resourceContentsOfEntry:(int)n;
 
@@ -148,13 +148,13 @@ NS_ASSUME_NONNULL_BEGIN
 -(BOOL)extractEntry:(int)n to:(NSString *)destination;
 -(BOOL)extractEntry:(int)n to:(NSString *)destination deferDirectories:(BOOL)defer;
 -(BOOL)extractEntry:(int)n to:(NSString *)destination deferDirectories:(BOOL)defer
-resourceFork:(BOOL)resfork;
+       resourceFork:(BOOL)resfork;
 -(BOOL)extractEntry:(int)n to:(NSString *)destination deferDirectories:(BOOL)defer
-dataFork:(BOOL)datafork resourceFork:(BOOL)resfork;
+           dataFork:(BOOL)datafork resourceFork:(BOOL)resfork;
 -(BOOL)extractArchiveEntry:(int)n to:(NSString *)destination;
 
 -(BOOL)_extractEntry:(int)n as:(NSString *)destfile deferDirectories:(BOOL)defer
-dataFork:(BOOL)datafork resourceFork:(BOOL)resfork;
+            dataFork:(BOOL)datafork resourceFork:(BOOL)resfork;
 
 -(void)updateAttributesForDeferredDirectories;
 
