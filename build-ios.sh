@@ -97,7 +97,7 @@ make_framework() {
     # Bundle the LICENSE and framework into a release
     cd build
     mkdir ${FRAMEWORK_NAME}
-    cp -r ${FRAMEWORK_NAME}.xcframework ${FRAMEWORK_NAME}/${FRAMEWORK_NAME}.xcframework
+    cp -R ${FRAMEWORK_NAME}.xcframework ${FRAMEWORK_NAME}/${FRAMEWORK_NAME}.xcframework
     cp ../LICENSE ${FRAMEWORK_NAME}/LICENSE
     ditto -ck --rsrc --sequesterRsrc ${FRAMEWORK_NAME} ${FRAMEWORK_NAME}.zip
 
