@@ -590,9 +590,9 @@ static uint8_t ASCII85NextByte(CSInputBuffer *input)
 					if(c4!='~')
 					{
 						c5=ASCII85NextByte(input);
-						if(c5=='~') { c5=33; finalbytes=3; }
+                        if(c5=='~') { c5=33; finalbytes=3 ? YES : NO; }
 					}
-					else { c4=c5=33; finalbytes=2; }
+                    else { c4=c5=33; finalbytes=2 ? YES : NO; }
 				}
 				else { c3=c4=c5=33; finalbytes=1; }
 			}
