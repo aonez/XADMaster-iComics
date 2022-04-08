@@ -712,9 +712,7 @@ outputTarget:(id)target selector:(SEL)selector argument:(id)argument
 -(BOOL)_shouldStop
 {
 	if(!delegate) return NO;
-	if(shouldstop) return YES;
-
-	return shouldstop=[delegate extractionShouldStopForUnarchiver:self];
+    return shouldstop=[delegate extractionShouldStopForUnarchiver:self];
 }
 
 @end
