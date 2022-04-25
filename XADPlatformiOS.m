@@ -29,6 +29,11 @@
 #import <sys/attr.h>
 #import <sys/xattr.h>
 
+struct ResourceOutputArguments
+{
+    int fd,offset;
+};
+
 @implementation XADPlatform
 
 //
@@ -38,7 +43,56 @@
 +(XADError)extractResourceForkEntryWithDictionary:(NSDictionary *)dict
 unarchiver:(XADUnarchiver *)unarchiver toPath:(NSString *)destpath
 {
-	return XADNotSupportedError;
+    const char *cpath=[destpath fileSystemRepresentation];
+    int originalpermissions=-1;
+
+    // Open the file for writing, creating it if it doesn't exist.
+    // TODO: Does it need to be opened for writing or is read enough?
+    int fd=open(cpath,O_WRONLY|O_CREAT|O_NOFOLLOW,0666);
+    if(fd==-1)
+    {
+        // If opening the file failed, check if it is a link and skip if it is.
+        struct stat st;
+        lstat(cpath,&st);
+
+        if(S_ISLNK(st.st_mode))
+        {
+            NSNumber *sizenum=[dict objectForKey:XADFileSizeKey];
+            if(!sizenum) return XADNoError;
+            else if([sizenum longLongValue]==0) return XADNoError;
+        }
+
+        // Otherwise, try changing permissions.
+        originalpermissions=st.st_mode;
+
+        chmod(cpath,0700);
+
+        fd=open(cpath,O_WRONLY|O_CREAT|O_NOFOLLOW,0666);
+        if(fd==-1) return XADOpenFileError; // TODO: Better error.
+    }
+
+    struct ResourceOutputArguments args={ .fd=fd, .offset=0 };
+
+    XADError error=[unarchiver runExtractorWithDictionary:dict
+    outputTarget:self selector:@selector(outputToResourceFork:bytes:length:)
+    argument:[NSValue valueWithPointer:&args]];
+
+    close(fd);
+
+    if(originalpermissions!=-1) chmod(cpath,originalpermissions);
+
+    return error;
+}
+
++(XADError)outputToResourceFork:(NSValue *)pointerval bytes:(uint8_t *)bytes length:(int)length
+{
+    struct ResourceOutputArguments *args=[pointerval pointerValue];
+    if(fsetxattr(args->fd,XATTR_RESOURCEFORK_NAME,bytes,length,
+    args->offset,0)) return XADOutputError;
+
+    args->offset+=length;
+
+    return XADNoError;
 }
 
 +(XADError)updateFileAttributesAtPath:(NSString *)path
