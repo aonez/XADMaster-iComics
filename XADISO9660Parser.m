@@ -322,6 +322,8 @@ length:(uint32_t)length
 
 	int parentlength=[fh readUInt8];
 	[fh skipBytes:parentlength-1];
+	
+	off_t startLocation=[fh offsetInFile];
 
 	while([fh offsetInFile]<extentend)
 	{
@@ -342,7 +344,68 @@ length:(uint32_t)length
 
 		uint32_t location=[fh readUInt32LE];
 		[fh skipBytes:4];
-		uint32_t length=[fh readUInt32LE];
+		uint64_t length=[fh readUInt32LE];
+		
+		// ISO9660 can only store int32 sizes but can store int64 size files.
+		if (length >= 4294967295) {
+			off_t prevpos=[fh offsetInFile];
+
+			uint64_t extendedLength=0;
+			uint32_t foundNextLocation=0;
+			
+			// Try to get the proper size checking the next file data, if any.
+			[fh seekToFileOffset:startLocation];
+			do {
+				off_t nextStartPos=[fh offsetInFile];
+				int nextRecordLength=[fh readUInt8];
+				if (nextRecordLength==0) {
+					int block=(int)(nextStartPos/2048);
+					[fh seekToFileOffset:(block+1)*2048];
+					continue;
+				}
+				[fh skipBytes:1];
+				uint32_t nextLocation=[fh readUInt32LE];
+				if (nextLocation>location) {
+					if (nextLocation<foundNextLocation || foundNextLocation==0) {
+						foundNextLocation=nextLocation;
+					}
+				}
+				[fh seekToFileOffset:nextStartPos+nextRecordLength];
+			} while ([fh offsetInFile]<extentend);
+			
+			// Found next file, use that data postion to get the actual file size.
+			if (foundNextLocation>0) {
+				uint64_t lengthInBlocks=length+((1 - (length/2048.0 - floor(length/2048.0))) * 2048);
+				uint32_t endLocation=(location*2048 + lengthInBlocks)/2048;
+				extendedLength=((uint64_t)foundNextLocation-location)*2048;
+			}
+			
+			// Last file
+			if (!foundNextLocation) {
+				[fh seekToEndOfFile];
+				extendedLength=[fh offsetInFile]-((uint64_t)location*2048);
+			}
+			
+			// Size is bigger than int32
+			if (extendedLength>0) {
+				// Trim extra null bytes
+				uint32_t extraNullBytes=0;
+				off_t nullBytePos=(uint64_t)location*2048 + extendedLength-1;
+				do {
+					[fh seekToFileOffset:nullBytePos];
+					int8_t byte = [fh readInt8];
+					if (byte != '\0') {
+						break;
+					}
+					extraNullBytes++;
+					nullBytePos--;
+				} while (extraNullBytes<2048);
+				length=extendedLength-extraNullBytes;
+			}
+			
+			[fh seekToFileOffset:prevpos];
+		}
+		
 		[fh skipBytes:4];
 
 		NSDate *date=[self readShortDateAndTime];
@@ -393,8 +456,8 @@ length:(uint32_t)length
 		NSMutableDictionary *dict=[NSMutableDictionary dictionaryWithObjectsAndKeys:
 			currpath,XADFileNameKey,
 			date,XADLastModificationDateKey,
-			[NSNumber numberWithUnsignedInt:length],XADFileSizeKey,
-			[NSNumber numberWithUnsignedInt:((length+2047)/2048)*blocksize],XADCompressedSizeKey,
+			[NSNumber numberWithUnsignedLongLong:length],XADFileSizeKey,
+			[NSNumber numberWithUnsignedLongLong:((length+2047)/2048)*blocksize],XADCompressedSizeKey,
 			[NSNumber numberWithUnsignedInt:location],@"ISO9660LocationOfExtent",
 			[NSNumber numberWithUnsignedInt:flags],@"ISO9660FileFlags",
 			[NSNumber numberWithUnsignedInt:unitsize],@"ISO9660FileUnitSize",
@@ -800,8 +863,8 @@ length:(uint32_t)length
 
 -(CSHandle *)handleForEntryWithDictionary:(NSDictionary *)dict wantChecksum:(BOOL)checksum
 {
-	uint32_t startblock=[[dict objectForKey:@"ISO9660LocationOfExtent"] unsignedIntValue];
-	uint32_t length=[[dict objectForKey:XADFileSizeKey] unsignedIntValue];
+	uint64_t startblock=[[dict objectForKey:@"ISO9660LocationOfExtent"] unsignedIntValue];
+	uint64_t length=[[dict objectForKey:XADFileSizeKey] unsignedLongLongValue];
 
 	return [fh nonCopiedSubHandleFrom:startblock*2048 length:length];
 }
