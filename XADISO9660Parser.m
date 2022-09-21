@@ -113,6 +113,7 @@ name:(NSString *)name propertiesToAdd:(NSMutableDictionary *)props
 		fh=nil;
 		isjoliet=NO;
 		ishighsierra=NO;
+		check64bitfilesizes=NO;
 	}
 	return self;
 }
@@ -146,51 +147,64 @@ name:(NSString *)name propertiesToAdd:(NSMutableDictionary *)props
 	{
 		fh=[[self handle] retain];
 	}
+	
+	NSMutableArray *dataentries = [[NSMutableArray alloc] init];
 
-	if(!ishighsierra)
-	for(int block=17;;block++)
-	{
-		[fh seekToFileOffset:block*2048];
-
-		int type=[fh readUInt8];
-
-		uint8_t identifier[5];
-		[fh readBytes:5 toBuffer:identifier];
-		if(memcmp(identifier,"CD001",5)!=0) break;
-
-		if(type==2)
+	if(!ishighsierra) {
+		for(int block=17;;block++)
 		{
-			int version=[fh readUInt8];
-			if(version!=1) continue;
+			[fh seekToFileOffset:block*2048];
 
-			int flags=[fh readUInt8];
-			if(flags!=0) continue;
+			int type=[fh readUInt8];
 
-			[fh skipBytes:80];
+			uint8_t identifier[5];
+			[fh readBytes:5 toBuffer:identifier];
+			if(memcmp(identifier,"CD001",5)!=0) break;
 
-			int esc1=[fh readUInt8];
-			int esc2=[fh readUInt8];
-			int esc3=[fh readUInt8];
-			if(esc1!=0x25) continue;
-			if(esc2!=0x2f) continue;
-			if(esc3!=0x40 && esc3!=0x43 && esc3!=0x45) continue;
+			if(type==2)
+			{
+				int version=[fh readUInt8];
+				if(version!=1) continue;
 
-			isjoliet=YES;
-			[self setObject:[NSNumber numberWithBool:YES] forPropertyKey:@"ISO9660IsJoliet"];
+				int flags=[fh readUInt8];
+				if(flags!=0) continue;
 
-			[self parseVolumeDescriptorAtBlock:block];
-			return;
-		}
-		else if(type==255)
-		{
-			break;
+				[fh skipBytes:80];
+
+				int esc1=[fh readUInt8];
+				int esc2=[fh readUInt8];
+				int esc3=[fh readUInt8];
+				if(esc1!=0x25) continue;
+				if(esc2!=0x2f) continue;
+				if(esc3!=0x40 && esc3!=0x43 && esc3!=0x45) continue;
+
+				isjoliet=YES;
+				[self setObject:[NSNumber numberWithBool:YES] forPropertyKey:@"ISO9660IsJoliet"];
+
+				[self parseVolumeDescriptorAtBlock:block withDataEntries:dataentries];
+				break;
+				//return;
+			}
+			else if(type==255)
+			{
+				break;
+			}
 		}
 	}
+	else {
+		[self parseVolumeDescriptorAtBlock:16 withDataEntries:dataentries];
+	}
+	
+	if (check64bitfilesizes)
+	[self checkAndFix64BitFileSizes:dataentries];
+	
+	for (NSMutableDictionary * dataentry in dataentries) {
+		[self addEntryWithDictionary:dataentry];
+	}
 
-	[self parseVolumeDescriptorAtBlock:16];
 }
 
--(void)parseVolumeDescriptorAtBlock:(uint32_t)block
+-(void)parseVolumeDescriptorAtBlock:(uint32_t)block withDataEntries:(NSMutableArray *)dataentries
 {
 	XADString *system,*volume;
 	uint32_t volumesetsize,volumesequencenumber,logicalblocksize;
@@ -304,13 +318,13 @@ name:(NSString *)name propertiesToAdd:(NSMutableDictionary *)props
 	[self setObject:[NSNumber numberWithInt:volumesetsize] forPropertyKey:@"ISO9660VolumeSetSize"];
 	[self setObject:[NSNumber numberWithInt:volumesequencenumber] forPropertyKey:@"ISO9660VolumeSequenceNumber"];
 
-	[self parseDirectoryWithPath:[self XADPath] atBlock:rootblock length:rootlength];
+	[self parseDirectoryWithPath:[self XADPath] atBlock:rootblock length:rootlength  withDataEntries:dataentries];
 }
 
 #define TypeID(a,b) (((a)<<8)|(b))
 
 -(void)parseDirectoryWithPath:(XADPath *)path atBlock:(uint32_t)block
-length:(uint32_t)length
+length:(uint32_t)length withDataEntries:(NSMutableArray *)dataentries
 {
 	off_t extentstart=block*2048;
 	off_t extentend=extentstart+length;
@@ -323,8 +337,6 @@ length:(uint32_t)length
 	int parentlength=[fh readUInt8];
 	[fh skipBytes:parentlength-1];
 	
-	off_t startLocation=[fh offsetInFile];
-
 	while([fh offsetInFile]<extentend)
 	{
 		off_t startpos=[fh offsetInFile];
@@ -346,64 +358,8 @@ length:(uint32_t)length
 		[fh skipBytes:4];
 		uint64_t length=[fh readUInt32LE];
 		
-		// ISO9660 can only store int32 sizes but can store int64 size files.
-		if (length >= 4294967295) {
-			off_t prevpos=[fh offsetInFile];
-
-			uint64_t extendedLength=0;
-			uint32_t foundNextLocation=0;
-			
-			// Try to get the proper size checking the next file data, if any.
-			[fh seekToFileOffset:startLocation];
-			do {
-				off_t nextStartPos=[fh offsetInFile];
-				int nextRecordLength=[fh readUInt8];
-				if (nextRecordLength==0) {
-					int block=(int)(nextStartPos/2048);
-					[fh seekToFileOffset:(block+1)*2048];
-					continue;
-				}
-				[fh skipBytes:1];
-				uint32_t nextLocation=[fh readUInt32LE];
-				if (nextLocation>location) {
-					if (nextLocation<foundNextLocation || foundNextLocation==0) {
-						foundNextLocation=nextLocation;
-					}
-				}
-				[fh seekToFileOffset:nextStartPos+nextRecordLength];
-			} while ([fh offsetInFile]<extentend);
-			
-			// Found next file, use that data postion to get the actual file size.
-			if (foundNextLocation>0) {
-				uint64_t lengthInBlocks=length+((1 - (length/2048.0 - floor(length/2048.0))) * 2048);
-				uint32_t endLocation=(location*2048 + lengthInBlocks)/2048;
-				extendedLength=((uint64_t)foundNextLocation-location)*2048;
-			}
-			
-			// Last file
-			if (!foundNextLocation) {
-				[fh seekToEndOfFile];
-				extendedLength=[fh offsetInFile]-((uint64_t)location*2048);
-			}
-			
-			// Size is bigger than int32
-			if (extendedLength>0) {
-				// Trim extra null bytes
-				uint32_t extraNullBytes=0;
-				off_t nullBytePos=(uint64_t)location*2048 + extendedLength-1;
-				do {
-					[fh seekToFileOffset:nullBytePos];
-					int8_t byte = [fh readInt8];
-					if (byte != '\0') {
-						break;
-					}
-					extraNullBytes++;
-					nullBytePos--;
-				} while (extraNullBytes<2048);
-				length=extendedLength-extraNullBytes;
-			}
-			
-			[fh seekToFileOffset:prevpos];
+		if (!check64bitfilesizes && length >= 4294967295) {
+			check64bitfilesizes=YES;
 		}
 		
 		[fh skipBytes:4];
@@ -751,10 +707,11 @@ length:(uint32_t)length
 			}
 		}
 
-		[self addEntryWithDictionary:dict];
+		//[self addEntryWithDictionary:dict];
+		[dataentries addObject:dict];
 
 		if(flags&0x02)
-		[self parseDirectoryWithPath:currpath atBlock:location length:length];
+		[self parseDirectoryWithPath:currpath atBlock:location length:length withDataEntries:dataentries];
 
 		[fh seekToFileOffset:endpos];
 	}
@@ -858,8 +815,63 @@ length:(uint32_t)length
 	hour:hour minute:minute second:second timeZone:tz];
 }
 
+-(void)set64BitFileSize:(uint64_t)length fromEntry:(NSDictionary *)entry inDataEntries:(NSMutableArray *)dataentries {
+	int index = [dataentries indexOfObject:entry];
+	NSMutableDictionary * dict = [dataentries objectAtIndex:index];
+	[dict setObject:[NSNumber numberWithUnsignedLongLong:length] forKey:XADFileSizeKey];
+	[dict setObject:[NSNumber numberWithUnsignedLongLong:((length+2047)/2048)*blocksize] forKey:XADCompressedSizeKey];
+}
 
+-(uint32_t)getDataChunkExtraNullBytes:(uint64_t)length atOffset:(uint64_t)offset {
+	uint32_t extraNullBytes=0;
+	off_t nullBytePos=offset*2048 + length-1;
+	do {
+		[fh seekToFileOffset:nullBytePos];
+		int8_t byte = [fh readInt8];
+		if (byte != '\0') {
+			break;
+		}
+		extraNullBytes++;
+		nullBytePos--;
+	} while (extraNullBytes<2048);
+	return extraNullBytes;
+}
 
+-(void)checkAndFix64BitFileSizes:(NSMutableArray *)dataentries {
+	NSPredicate *possible64BitSizePredicate = [NSPredicate predicateWithFormat:@"SELF.%K >= 4294967295", XADFileSizeKey];
+	NSArray *possible64BitSizeEntries = [dataentries filteredArrayUsingPredicate:possible64BitSizePredicate];
+	
+	for (NSDictionary * entry in possible64BitSizeEntries) {
+		uint64_t length = [[entry objectForKey:XADFileSizeKey] unsignedLongLongValue];
+		uint32_t locationOffset = [[entry objectForKey:@"ISO9660LocationOfExtent"] longValue];
+		uint64_t newLength = 0;
+		
+		NSPredicate *nextLocationPredicate = [NSPredicate predicateWithFormat:@"SELF.%K > %li", @"ISO9660LocationOfExtent", [[entry objectForKey:@"ISO9660LocationOfExtent"] longValue]];
+		NSArray *nextLocationEntries = [[dataentries filteredArrayUsingPredicate:nextLocationPredicate] sortedArrayUsingDescriptors:@[[NSSortDescriptor sortDescriptorWithKey:@"ISO9660LocationOfExtent" ascending:YES]]];
+		
+		if (nextLocationEntries.count) {
+			// Size calculated with the next data chunk offset
+			uint32_t newLocationOffset = [[nextLocationEntries[0] objectForKey:@"ISO9660LocationOfExtent"] longValue];
+			uint64_t lengthInBlocks=length+((1 - (length/2048.0 - floor(length/2048.0))) * 2048);
+			uint32_t endLocation=(locationOffset*2048 + lengthInBlocks)/2048;
+			newLength=((uint64_t)newLocationOffset-locationOffset)*2048;
+		}
+		else {
+			// Should be the last data chunk
+			off_t prevpos=[fh offsetInFile];
+			[fh seekToEndOfFile];
+			newLength=[fh offsetInFile]-((uint64_t)locationOffset*2048);
+			[fh seekToFileOffset:prevpos];
+		}
+		
+		if (newLength<length)
+			newLength=0;
+		
+		if (newLength) {
+			[self set64BitFileSize:newLength-[self getDataChunkExtraNullBytes:newLength atOffset:locationOffset] fromEntry:entry inDataEntries:dataentries];
+		}
+	}
+}
 
 -(CSHandle *)handleForEntryWithDictionary:(NSDictionary *)dict wantChecksum:(BOOL)checksum
 {

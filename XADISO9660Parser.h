@@ -24,6 +24,7 @@
 {
 	int blocksize;
 	BOOL isjoliet,ishighsierra;
+	BOOL check64bitfilesizes;
 	CSHandle *fh;
 }
 
@@ -35,8 +36,8 @@ name:(NSString *)name propertiesToAdd:(NSMutableDictionary *)props;
 -(void)dealloc;
 
 -(void)parse;
--(void)parseVolumeDescriptorAtBlock:(uint32_t)block;
--(void)parseDirectoryWithPath:(XADPath *)path atBlock:(uint32_t)block length:(uint32_t)length;
+-(void)parseVolumeDescriptorAtBlock:(uint32_t)block withDataEntries:(NSMutableArray *)dataentries;
+-(void)parseDirectoryWithPath:(XADPath *)path atBlock:(uint32_t)block length:(uint32_t)lengt withDataEntries:(NSMutableArray *)dataentries;
 
 -(XADString *)readStringOfLength:(int)length;
 -(NSDate *)readLongDateAndTime;
